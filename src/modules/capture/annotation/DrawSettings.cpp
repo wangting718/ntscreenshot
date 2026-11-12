@@ -330,6 +330,32 @@ int DrawSettings::fontSize()
     return s_fontSize;
 }
 
+void DrawSettings::setFontSizeSilently(int pixelSize)
+{
+    // 范围与 TextEdit 滚轮保持一致（8~72px，超出下拉框预设也允许）。
+    pixelSize = qBound(8, pixelSize, 72);
+    if (pixelSize == s_fontSize) {
+        return;
+    }
+    s_fontSize = pixelSize;
+    if (sizeList_) {
+        const QString text = QString::number(pixelSize);
+        int index = sizeList_->findText(text);
+        if (index < 0) {
+            // 滚轮可以调到预设档位之外的字号，按数值插进下拉框。
+            index = 0;
+            for (int i = 0; i < sizeList_->count(); ++i) {
+                if (sizeList_->itemText(i).toInt() < pixelSize) {
+                    index = i + 1;
+                }
+            }
+            sizeList_->insertItem(index, text);
+        }
+        sizeList_->setCurrentIndex(index);
+    }
+    // 故意不发 sigChanged，原因见头文件注释。
+}
+
 QColor DrawSettings::currentColor()
 {
     return s_currentColor;

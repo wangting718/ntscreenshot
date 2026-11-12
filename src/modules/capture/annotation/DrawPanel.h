@@ -19,6 +19,7 @@ class TextEdit;
 class QButtonGroup;
 class QHideEvent;
 class QMouseEvent;
+class QWheelEvent;
 class QPainter;
 class QShowEvent;
 
@@ -114,12 +115,19 @@ public:
 
 signals:
     void interactionStarted();
+    // 文字字号被滚轮改动后发出（编辑中或落笔前均可），DrawPanel 用它
+    // 同步工具栏的 DrawSettings，不经过 sigChanged，避免关闭输入框。
+    void textFontSizeChanged(int pixelSize);
+
+private slots:
+    void onTextFontSizeChanged(int pixelSize);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event);
     bool onMousePressEvent(QMouseEvent *e);
     bool onMouseReleaseEvent(QMouseEvent *e);
     bool onMouseMoveEvent(QMouseEvent *e);
+    bool onWheelEvent(QWheelEvent *e);
 
 private:
     QWidget* parent_;
@@ -145,6 +153,8 @@ private:
     TextEdit *textEdit_;
     QImage bkImage_;
     QRect drawRect_;
+    // 落笔前滚轮的不足一格余量（与 TextEdit 里同理，攒够 120 再算一格）。
+    int wheelRemainder_ = 0;
 };
 
 //////////////////////////////////////////////////////////////////////////

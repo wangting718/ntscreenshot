@@ -17,6 +17,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QApplication>
 #include <QPaintEvent>
 #include <QTimer>
@@ -174,6 +175,9 @@ void DrawPanel::setupPanels()
     drawSettings_ = new DrawSettings(this);
     drawSettings_->setVisible(false);
     connect(drawSettings_, &DrawSettings::sigChanged, this, &DrawPanel::onSettingChanged);
+    // 滚轮改字号走静默同步，不经过 sigChanged（见 DrawSettings 头文件注释）。
+    connect(&drawer_, &Drawer::textFontSizeChanged,
+            drawSettings_, &DrawSettings::setFontSizeSilently);
 
     toolMessageLabel_ = new QTextEdit(this);
     toolMessageLabel_->setObjectName(QStringLiteral("DrawPanelToolMessage"));
@@ -235,7 +239,7 @@ void DrawPanel::setupButtonsAndLayout(bool hasParent)
     QPushButton* pbArrow = createShapeBtn("arrow.png", QCoreApplication::translate("App", "箭头"));
     QPushButton* pbRectangle = createShapeBtn("rectangle.png", QCoreApplication::translate("App", "矩形"));
     QPushButton* pbEllipse = createShapeBtn("ellipse.png", QCoreApplication::translate("App", "椭圆"));
-    QPushButton* pbText = createShapeBtn("text.png", QCoreApplication::translate("App", "文本（Ctrl+Enter 完成，Esc 取消）"));
+    QPushButton* pbText = createShapeBtn("text.png", QCoreApplication::translate("App", "文本（滚轮调字号，Ctrl+Enter 完成，Esc 取消）"));
 
     QPushButton* pbMosaic = createShapeBtn("mosaic.png", QCoreApplication::translate("App", "马赛克"));
     QPushButton* pbImageTools = new AnnotationButton(AnnotationIcon::icon("more"), QString(), this);
@@ -1104,6 +1108,8 @@ void Drawer::showTextEdit(const QPoint &pos)
         textEdit_ = new TextEdit(parent_);
         connect(textEdit_, &TextEdit::commitRequested, this, &Drawer::saveText);
         connect(textEdit_, &TextEdit::cancelRequested, this, &Drawer::cancelText);
+        connect(textEdit_, &TextEdit::fontSizeChanged,
+                this, &Drawer::onTextFontSizeChanged);
     }
 
     textEdit_->setStyle(drawMode_.font(), drawMode_.pen().color());
@@ -1183,9 +1189,61 @@ bool Drawer::eventFilter(QObject* watched, QEvent* event)
         return onMouseReleaseEvent(static_cast<QMouseEvent*>(event));
     case QEvent::MouseMove:
         return onMouseMoveEvent(static_cast<QMouseEvent*>(event));
+    case QEvent::Wheel:
+        return onWheelEvent(static_cast<QWheelEvent*>(event));
     default:
         return false;
     }
+}
+
+void Drawer::onTextFontSizeChanged(int pixelSize)
+{
+    // 编辑中的输入框已经自己变大了，这里只同步待提交的 DrawMode，
+    // 否则 Ctrl+Enter 提交时还会按旧字号画出来。
+    // 注意不能走 DrawPanel::onSettingChanged / setMode，那会先 saveText()
+    // 把输入框关掉；工具栏同步由 textFontSizeChanged 信号另行静默完成。
+    if (drawMode_.shape() == DrawMode::Text) {
+        drawMode_.font().setPixelSize(pixelSize);
+    }
+    emit textFontSizeChanged(pixelSize);
+}
+
+bool Drawer::onWheelEvent(QWheelEvent *e)
+{
+    if (!isDraw() || drawMode_.shape() != DrawMode::Text) {
+        return false;
+    }
+
+    // 正在输入文字时，滚轮事件若落在输入框外会到这里，转发给输入框，
+    // 让它统一处理（改已输入的文字 + 发 fontSizeChanged 同步）。
+    // 落在输入框内的滚轮由 TextEdit 自己的 wheelEvent 处理，不会到这里。
+    if (textEdit_ && textEdit_->isVisible()) {
+        wheelRemainder_ += e->angleDelta().y();
+        const int steps = wheelRemainder_ / 120;
+        wheelRemainder_ -= steps * 120;
+        if (steps != 0) {
+            textEdit_->adjustFontSize(steps);
+        }
+        e->accept();
+        return true;
+    }
+
+    // 还没落笔：先调好字号，下一次点下去输入的文字就用这个大小。
+    wheelRemainder_ += e->angleDelta().y();
+    const int steps = wheelRemainder_ / 120;
+    wheelRemainder_ -= steps * 120;
+    if (steps == 0) {
+        e->accept();
+        return true;
+    }
+    const int newSize = TextEdit::adjustedFontSize(
+        drawMode_.font().pixelSize() > 0
+            ? drawMode_.font().pixelSize()
+            : DrawSettings::fontSize(), steps);
+    drawMode_.font().setPixelSize(newSize);
+    emit textFontSizeChanged(newSize);
+    e->accept();
+    return true;
 }
 
 bool Drawer::onMousePressEvent(QMouseEvent *e)
