@@ -4,6 +4,12 @@ All notable changes will be documented in this file. The format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-13
+
+### Added
+
+- Added mouse-wheel font size adjustment for text annotations in the capture editor (Snipaste-style, 8–72 px in 2 px steps).
+
 ## [0.2.5] - 2026-11-05
 
 ### Added
