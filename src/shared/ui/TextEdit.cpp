@@ -93,7 +93,7 @@ void TextEdit::setFontPixelSize(int pixelSize)
     QTextCursor all(document());
     all.select(QTextCursor::Document);
     QTextCharFormat format;
-    format.setFontPixelSize(pixelSize);
+    format.setFont(newFont);
     all.mergeCharFormat(format);
     setTextCursor(savedCursor);
 
